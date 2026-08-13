@@ -3,27 +3,27 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Open Android Settings</title>
+  <title>Open Android Settings (New Tab)</title>
   <style>
     body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, Arial; padding: 2rem; color:#111; }
-    .btn { display:inline-block; padding:.75rem 1.25rem; background:#0b63d6; color:#fff; border-radius:8px; text-decoration:none; cursor:pointer; }
+    .btn { display:inline-block; padding:.75rem 1.25rem; background:#0b63d6; color:#fff; border-radius:8px; text-decoration:none; cursor:pointer; border:0; }
     #status { margin-top:1rem; color:#333; font-weight:600; }
     .hint { margin-top:.5rem; color:#555; }
   </style>
 </head>
 <body>
-  <h3>Open Android Settings</h3>
+  <h3>Open Android Settings in a New Tab</h3>
 
-  <p>Tap the button below to attempt to open the Android Settings app from your browser.</p>
+  <p>Tap the button below. The page will try to open the Android Settings app in a new tab/window.</p>
 
-  <button id="openBtn" class="btn">Open Settings</button>
+  <button id="openBtn" class="btn">Open Settings (new tab)</button>
 
   <div id="status">Status: ready</div>
   <div class="hint">If nothing happens, open Settings manually from your device.</div>
 
   <script>
-    const status = document.getElementById('status');
     const btn = document.getElementById('openBtn');
+    const status = document.getElementById('status');
 
     // Primary intent to open the main Settings screen
     const INTENT_PRIMARY = 'intent:#Intent;action=android.settings.SETTINGS;end';
@@ -33,39 +33,64 @@
       'intent:#Intent;action=android.settings.SETTINGS;end',
       'intent://settings/#Intent;action=android.settings.SETTINGS;end',
       'intent://#Intent;action=android.settings.SETTINGS;end',
-      // Direct package open attempt
       'intent:#Intent;component=com.android.settings/.Settings;end'
     ];
 
-    // Try to navigate to a URI and wait briefly to allow the OS to handle it
-    function tryNavigate(uri, wait = 1000) {
-      return new Promise((resolve) => {
-        try {
-          window.location = uri;
-        } catch (e) {
-          console.error('Navigation error', e);
-        }
-        setTimeout(() => resolve(), wait);
-      });
+    // Try to open a URI in a new tab/window. Must be called from a user gesture.
+    function openInNewTab(uri) {
+      try {
+        // Use window.open with noopener for security
+        const newWin = window.open(uri, '_blank', 'noopener,noreferrer');
+        // Some browsers return null when blocked
+        return newWin !== null;
+      } catch (e) {
+        console.error('openInNewTab error', e);
+        return false;
+      }
     }
 
-    async function openSettings() {
-      status.textContent = 'Status: attempting to open Settings';
-      // Try each variant in sequence
+    async function openSettingsNewTab() {
+      status.textContent = 'Status: attempting to open Settings in a new tab...';
+
+      // Try anchor fallback first (some browsers handle anchor intent better)
+      const a = document.createElement('a');
+      a.rel = 'noopener noreferrer';
+      a.target = '_blank';
+      a.style.display = 'none';
+      document.body.appendChild(a);
+
+      // Try each variant until one appears to be accepted
       for (let i = 0; i < INTENT_VARIANTS.length; i++) {
         const uri = INTENT_VARIANTS[i];
-        await tryNavigate(uri, 900);
-        // short pause between attempts
-        await new Promise(r => setTimeout(r, 300));
+        a.href = uri;
+
+        // Try programmatic open via window.open
+        const opened = openInNewTab(uri);
+        if (opened) {
+          status.textContent = 'Status: intent opened (or new tab requested).';
+          document.body.removeChild(a);
+          return;
+        }
+
+        // Try clicking the anchor as a fallback
+        try {
+          a.click();
+          // Give the OS a moment to respond
+          await new Promise(r => setTimeout(r, 800));
+        } catch (e) {
+          console.warn('anchor click failed', e);
+        }
       }
 
-      // Final fallback: try the generic settings action via location.href
-      status.textContent = 'Status: attempts finished. If Settings did not open, please open Settings manually.';
+      document.body.removeChild(a);
+
+      // Final fallback: show instructions
+      status.textContent = 'Status: could not open Settings automatically. Please open Settings manually.';
     }
 
     btn.addEventListener('click', () => {
       // Must be a user gesture for many browsers to allow intent navigation
-      openSettings().catch(err => {
+      openSettingsNewTab().catch(err => {
         console.error(err);
         status.textContent = 'Status: error occurred. Please open Settings manually.';
       });
